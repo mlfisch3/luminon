@@ -270,7 +270,7 @@ def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20, clip=True, norm
 
 def bimef(image, exposure_ratio=-1, enhance=0.5, 
           a=-0.3293, b=1.1258, lamda=0.5, 
-          sigma=5, scale=0.1, sharpness=0.001, 
+          sigma=5, scale=0.5, sharpness=0.001, 
           dim_threshold=0.5, dim_size=(50,50), 
           solver='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50, 
           clip=False, normalize=True, nbins=100, lo=1, hi=7, npoints=100,

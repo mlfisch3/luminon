@@ -90,7 +90,8 @@ def run_app():
 
             button_ai = st.button("Download Enhanced Image", 'adjusted_intensity')
             if button_ai:
-                img.imsave(output_file_name, image_np_ai)
+                #img.imsave(output_file_name, (1.-image_np_ai).astype(np.uint8)*255)
+                img.imsave(output_file_name, normalize_array(image_np_ai))
                 st.text("Download complete")
 
         st.text('\n\n\n\n\n\n\n\n')
