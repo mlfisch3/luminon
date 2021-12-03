@@ -1,4 +1,4 @@
-from bimef_mf_app_20211202 import bimef, entropy, normalize_array
+from bimef import bimef, entropy, normalize_array
 import cv2
 import numpy as np
 from matplotlib import image as img
