@@ -7,7 +7,7 @@ import time
 
 st.set_page_config(page_title="Luminon", layout="wide")
 
-def run_app(default_granularity=0.3, default_power=0.5, default_sensitivty=0.5):
+def run_app(default_granularity=0.25, default_power=0.8, default_sensitivty=0.3):
 
     @st.cache(max_entries=1)
     def array_info(array, print_info=True, return_info=False, return_info_str=False):
