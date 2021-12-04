@@ -285,7 +285,7 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
         image_maxRGB = image.max(axis=2)
     else: image_maxRGB = image
         
-    if scale <= 0.: image_maxRGB_reduced = image_maxRGB
+    if (scale <= 0) | (scale >= 1) : image_maxRGB_reduced = image_maxRGB
     else: image_maxRGB_reduced = imresize(image_maxRGB, scale)
         
     image_maxRGB_reduced_01 = normalize_array(image_maxRGB_reduced)
