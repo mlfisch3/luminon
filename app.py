@@ -61,9 +61,9 @@ def run_app(default_granularity=0.3, default_power=0.5, default_sensitivty=0.5):
     @st.cache(max_entries=1)
     def adjust_intensity(
                          array, 
-                         exposure_ratio=-1, enhance=0.5, 
-                         a=-0.3293, b=1.1258, lamda=0.5, 
-                         sigma=5, scale=0.3, sharpness=0.001, 
+                         exposure_ratio=-1, enhance=0.8, 
+                         a=-0.3293, b=1.1258, lamda=0.3, 
+                         sigma=5, scale=0.25, sharpness=0.001, 
                          dim_threshold=0.5, dim_size=(50,50), 
                          solver='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50, 
                          clip=False, normalize=True, nbins=100, lo=1, hi=7, npoints=20
@@ -82,9 +82,9 @@ def run_app(default_granularity=0.3, default_power=0.5, default_sensitivty=0.5):
         return (enhanced * 255).astype(np.uint8)
 
 
-    enhancement_granularity = float(st.sidebar.text_input('Enhancement Granularity   (default = 0.3)', str(default_granularity)))
-    enhancement_power = float(st.sidebar.text_input('Enhancement Strength     (default = 0.5)', str(default_power)))
-    enhancement_sensitivity = float(st.sidebar.text_input('Enhancement Sensitivity   (default = 0.5)', str(default_sensitivty)))
+    enhancement_granularity = float(st.sidebar.text_input('Enhancement Granularity   (default = 0.25)', str(default_granularity)))
+    enhancement_power = float(st.sidebar.text_input('Enhancement Power     (default = 0.8)', str(default_power)))
+    enhancement_sensitivity = float(st.sidebar.text_input('Enhancement Sensitivity   (default = 0.3)', str(default_sensitivty)))
 
     fImage = st.sidebar.file_uploader("Upload image file:")
 
