@@ -8,31 +8,33 @@ from scipy.sparse import spdiags, csc_matrix
 from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator
 from PIL import Image
 from datetime import datetime
+import streamlit as st
 
 #### Array Helper Functions
 
+@st.cache()
 def diff(x, axis=0):
     if axis==0:
         return x[1:,:]-x[:-1,:]
     else:
         return x[:,1:]-x[:,:-1]
 
-
+@st.cache()
 def cyclic_diff(x,axis=0):
     if axis==0:
         return x[0,:]-x[-1,:]
     else:
         return (x[:,0]-x[:,-1])[None,:].T
 
-
+@st.cache()
 def flatten_by_cols(x):
     return x.T.reshape(np.prod(x.shape), -1).flatten()
 
-
+@st.cache()
 def flatten_by_rows(x):
     return x.reshape(-1, np.prod(x.shape)).flatten()
 
-
+@st.cache()
 def geometric_mean(image):
     try:
         assert image.ndim == 3, 'Warning: Expected a 3d-array.  Returning input as-is.'
@@ -41,6 +43,7 @@ def geometric_mean(image):
         print(msg)
         return image
 
+@st.cache()
 def normalize_array(array):
     if array.ndim==3:
         array_ = array - array.min(axis=2).min(axis=1).min(axis=0)#.astype(np.float32)
@@ -54,12 +57,15 @@ def normalize_array(array):
         array_ = array - array.min(axis=0)#.astype(np.float32)
         return array_ / array_.max(axis=0)
 
-
+@st.cache()
 def imresize(image, scale=-1, size=(-1,-1)):
     ''' image: numpy array with shape (n, m) or (n, m, 3)
        scale: mulitplier of array height & width (if scale > 0)
        size: (num_rows, num_cols) 2-tuple of ints > 0 (only used if scale <= 0)'''
     
+    if image.shape == size:
+        return image
+
     if image.ndim==2:
         im = Image.fromarray(image)
         if scale > 0:
@@ -86,17 +92,19 @@ def imresize(image, scale=-1, size=(-1,-1)):
 
 
 #### Texture Functions
-
+@st.cache()
 def delta(x):   
     
     dt0_v = np.vstack([diff(x, axis=0),cyclic_diff(x,axis=0)])
     dt0_h = np.hstack([diff(x,axis=1),cyclic_diff(x,axis=1)])
     return dt0_v, dt0_h
 
+@st.cache()
 def kernel(dt0_v, dt0_h, sigma):
     try:
-        assert sigma%2==1, 'Warning: sigma should be odd'
+        assert sigma%2==1, f'Warning: sigma should be odd. Using sigma = {sigma + 1}.'
     except AssertionError as warning:
+        sigma += 1
         print('***** '+warning+' *****')
     n_pad = int(sigma/2)
     
@@ -105,8 +113,8 @@ def kernel(dt0_v, dt0_h, sigma):
     
     return kernel_v, kernel_h
 
+@st.cache()
 def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
-    #return array from center with shape same as input array 
 
     W_v = 1/(np.abs(kernel_v) * np.abs(dt0_v) + sharpness)
     W_h = 1/(np.abs(kernel_h) * np.abs(dt0_h) + sharpness)
@@ -116,7 +124,8 @@ def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 
 #### Illumination Map Function 
 
-def construct_map(wx, wy, lamda,):
+@st.cache(max_entries=10)
+def construct_map(wx, wy, lamda):
     
     r, c = wx.shape        
     k = r * c
@@ -162,7 +171,7 @@ def construct_map(wx, wy, lamda,):
 
 #### Sparse solver function
 
-
+@st.cache(max_entries=1)
 def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
     """
     Solves for x = b/A  [[b is vector(B)]]
@@ -189,6 +198,7 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
                 
     return c
 
+@st.cache(max_entries=1)
 def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
 
     r, c = G.shape
@@ -199,7 +209,7 @@ def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0
 
     
 #### Exposure Functions
-
+@st.cache()
 def applyK(G, k, a=-0.3293, b=1.1258, verbose=False, clip=False):
 
     if k==1.0:
@@ -219,11 +229,9 @@ def applyK(G, k, a=-0.3293, b=1.1258, verbose=False, clip=False):
 
     return G_adjusted
 
-
+@st.cache()
 def entropy(array, normalize=True, nbins=100):
-    #a = np.real(array).flatten()  #20211128 2356
-    a = array.flatten()  # reverted on 20211201
-    a = a.astype(np.float32)
+    a = array.flatten().astype(np.float32)
     
     if normalize:
         a = normalize_array(a)
@@ -240,23 +248,19 @@ def entropy(array, normalize=True, nbins=100):
     frequencies = counts / counts.sum()
     return (-1* np.dot(frequencies, np.log2(frequencies)))
 
-#    h01 = hist[0] / np.prod(a.shape)
-#    h = h01[h01>0]
-#    return (-1* h* np.log2(h)).sum()
 
-
+@st.cache()
 def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     
     dim_pixels_reduced = imresize(dim_pixels,size=dim_size)
 
     image_reduced = imresize(image,size=dim_size)
     image_reduced = np.where(image_reduced>0,image_reduced,0)
-#    Y = geometric_mean(np.real(image_reduced)) # possibly complex?
-    Y = geometric_mean(image_reduced) # possibly complex?
+    Y = geometric_mean(image_reduced)
     Y = Y[dim_pixels_reduced]
     return Y
 
-
+@st.cache()
 def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20, clip=True, normalize=True, nbins=100):
   
     if sum(array.shape)==0:
@@ -267,7 +271,7 @@ def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20, clip=True, norm
     optimal_index = np.argmax(entropies)
     return sample_ratios[optimal_index]
       
-
+@st.cache(max_entries=10)
 def bimef(image, exposure_ratio=-1, enhance=0.5, 
           a=-0.3293, b=1.1258, lamda=0.5, 
           sigma=5, scale=0.3, sharpness=0.001, 
@@ -305,8 +309,8 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     ######################################################
 
     ############ RESTORE REDUCED SIZE LATENT MATRIX TO FULL SIZE:  ###########################
-    if scale <=0.: image_maxRGB_01_latent = image_maxRGB_reduced_01_latent
-    else: image_maxRGB_01_latent = imresize(image_maxRGB_reduced_01_latent, size=image_maxRGB.shape)
+    #if scale image_maxRGB_01_latent.shape == image_maxRGB.shape: image_maxRGB_01_latent = image_maxRGB_reduced_01_latent
+    image_maxRGB_01_latent = imresize(image_maxRGB_reduced_01_latent, size=image_maxRGB.shape)
     ######################################################
     
     ############# CALCULATE WEIGHTS ###############################

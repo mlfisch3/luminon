@@ -7,7 +7,8 @@ import time
 
 st.set_page_config(page_title="Luminon", layout="wide")
 
-def run_app(default_granularity=0.1, default_power=0.8, default_sensitivty=0.3):
+def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3, 
+            default_dim_size=(50), default_dim_threshold=0.5, default_a=-0.3293, default_b=1.258, default_exposure_ratio=-1):
 
     @st.cache(max_entries=1)
     def array_info(array, print_info=True, return_info=False, return_info_str=False):
@@ -82,9 +83,14 @@ def run_app(default_granularity=0.1, default_power=0.8, default_sensitivty=0.3):
         return (enhanced * 255).astype(np.uint8)
 
 
-    enhancement_granularity = float(st.sidebar.text_input('Enhancement Granularity   (default = 0.1)', str(default_granularity)))
-    enhancement_power = float(st.sidebar.text_input('Enhancement Power     (default = 0.8)', str(default_power)))
-    enhancement_sensitivity = float(st.sidebar.text_input('Enhancement Sensitivity   (default = 0.3)', str(default_sensitivty)))
+    granularity = float(st.sidebar.text_input('Resolution   (default = 0.1)', str(default_granularity)))
+    power = float(st.sidebar.text_input('Power     (default = 0.8)', str(default_power)))
+    smoothness = float(st.sidebar.text_input('Smoothness   (default = 0.3)', str(default_smoothness)))
+    exposure_sample = int(st.sidebar.text_input('Sample   (default = 50)', str(default_dim_size)))
+    sensitivity = float(st.sidebar.text_input('Sensitivity   (default = 0.5)', str(default_dim_threshold)))
+    a = float(st.sidebar.text_input('Camera A   (default = -0.3293)', str(default_a)))
+    b = float(st.sidebar.text_input('Camera B   (default = 1.1258)', str(default_b)))
+    exposure_ratio = float(st.sidebar.text_input('Exposure Ratio   (default = -1 (auto))', str(default_exposure_ratio)))
 
     fImage = st.sidebar.file_uploader("Upload image file:")
 
@@ -108,13 +114,11 @@ def run_app(default_granularity=0.1, default_power=0.8, default_sensitivty=0.3):
 
             button = st.download_button(label = "Download Original Image", data = image_np_binary, file_name = input_file_name, mime = "image/png")
 
-        #process_time=0.
-        #with st.spinner(text="Enhancing image ..."):
         start = time.time()
-        image_np_ai = adjust_intensity(image_np, scale=enhancement_granularity, enhance=enhancement_power, lamda=enhancement_sensitivity)
+        image_np_ai = adjust_intensity(image_np, exposure_ratio=exposure_ratio, scale=granularity, enhance=power, 
+                                       lamda=smoothness, dim_size=(exposure_sample,exposure_sample), dim_threshold=sensitivity, a=a, b=b)
         end = time.time()
         process_time = end - start
-        #st.sidebar.text(f'Processing time: {process_time:.5f} s')
         print(f'Processing time: {process_time:.5f} s')
 
         processed_file_name = input_file_basename + '_AI' + input_file_ext
