@@ -11,7 +11,56 @@ from datetime import datetime
 import streamlit as st
 
 MAX_ENTRIES = 1
+
 #### Array Helper Functions
+
+@st.cache(max_entries=MAX_ENTRIES)
+def array_info(array, print_info=True, return_info=False, return_info_str=False):
+
+    info = {}
+    info['dtype'] = array.dtype
+    info['ndim'] = array.ndim
+    info['shape'] = array.shape
+    info['max'] = array.max()
+    info['min'] = array.min()
+    info['mean'] = array.mean()
+    info['std'] = array.std()
+    info['size'] = array.size
+    info['nonzero'] = np.count_nonzero(array)
+    info['layer_variation'] = 0
+    info['entropy'] = entropy(array)
+
+    if array.ndim > 2:
+        info['layer_variation'] = array.std(axis=array.ndim-1).mean()
+
+    info['pct'] = 100 * info['nonzero'] / info['size']
+
+    if print_info:
+        print('{dtype}  {shape}'.format(**info))
+        print('nonzero: {nonzero} / {size}  ({pct:.1f} %)'.format(**info))
+        print('min:  {min:.2f}   max: {max:.2f}'.format(**info))
+        print('mean: {mean:.2f}   std: {std:.2f}'.format(**info), end="")
+        if array.ndim > 2:
+            print('     layer_variation: {layer_variation:.2f}'.format(**info))
+
+        print('entropy: {entropy:.2f}'.format(**info), end="")
+
+    out = []
+    if return_info:
+        out.append(info)
+    if return_info_str:
+        info_str = f'shape: {info["shape"]}\n'
+        info_str += f'size: {info["size"]}\nnonzero: {info["nonzero"]}  ({info["pct"]:.4f} %)\n'
+        info_str += f'min: {info["min"]}    max: {info["max"]}\n'
+        info_str += f'mean: {info["mean"]:.4f}    std: {info["std"]:.4f}\n'
+        if array.ndim > 2:
+            info_str += f'layer_variation: {info["layer_variation"]:.4f}\n'
+
+        info_str += f'entropy: {info["entropy"]:.4f}\n'
+
+        out.append(info_str)
+
+    return out
 
 @st.cache(max_entries=MAX_ENTRIES)
 def diff(x, axis=0):
@@ -47,15 +96,15 @@ def geometric_mean(image):
 @st.cache(max_entries=MAX_ENTRIES)
 def normalize_array(array):
     if array.ndim==3:
-        array_ = array - array.min(axis=2).min(axis=1).min(axis=0)#.astype(np.float32)
+        array_ = array - array.min(axis=2).min(axis=1).min(axis=0)
         return array_ / array_.max(axis=2).max(axis=1).max(axis=0)
     
     if array.ndim==2:
-        array_ = array - array.min(axis=1).min(axis=0)#.astype(np.float32)
+        array_ = array - array.min(axis=1).min(axis=0)
         return array_ / array_.max(axis=1).max(axis=0)
 
     if array.ndim==1:
-        array_ = array - array.min(axis=0)#.astype(np.float32)
+        array_ = array - array.min(axis=0)
         return array_ / array_.max(axis=0)
 
 @st.cache(max_entries=MAX_ENTRIES)
@@ -109,8 +158,8 @@ def kernel(dt0_v, dt0_h, sigma):
         print('***** '+warning+' *****')
     n_pad = int(sigma/2)
     
-    kernel_v = signal.convolve(dt0_v,  np.ones((sigma,1)), method='fft')[n_pad:n_pad+dt0_v.shape[0],:]
-    kernel_h = signal.convolve(dt0_h,  np.ones((1,sigma)), method='fft')[:,n_pad:n_pad+dt0_h.shape[1]]
+    kernel_v = signal.convolve(dt0_v, np.ones((sigma,1)), method='fft')[n_pad:n_pad+dt0_v.shape[0],:]
+    kernel_h = signal.convolve(dt0_h, np.ones((1,sigma)), method='fft')[:,n_pad:n_pad+dt0_h.shape[1]]
     
     return kernel_v, kernel_h
 
@@ -134,29 +183,29 @@ def construct_map(wx, wy, lamda):
     dx = -lamda * flatten_by_cols(wx) 
     dy = -lamda * flatten_by_cols(wy)
     
-    wx_permuted_cols = np.roll(wx,1,axis=1) # tmp_x
-    dx_permuted_cols = -lamda * flatten_by_cols(wx_permuted_cols)  # dxa
+    wx_permuted_cols = np.roll(wx,1,axis=1)
+    dx_permuted_cols = -lamda * flatten_by_cols(wx_permuted_cols)
     
-    wy_permuted_rows = np.roll(wy,1,axis=0) # tmp_y
-    dy_permuted_rows = -lamda * flatten_by_cols(wy_permuted_rows)   # dya
+    wy_permuted_rows = np.roll(wy,1,axis=0)
+    dy_permuted_rows = -lamda * flatten_by_cols(wy_permuted_rows)
 
     D = 1 - (dx + dy + dx_permuted_cols + dy_permuted_rows)
         
     wx_permuted_cols_head = np.zeros_like(wx_permuted_cols) 
-    wx_permuted_cols_head[:,0] = wx_permuted_cols[:,0]   # tmp_xx             LAST COLUMN OF WX MOVED TO 1ST COLUMN, ALL BUT 1ST COLUMN IS THEN SET TO 0
-    dx_permuted_cols_head = -lamda * flatten_by_cols(wx_permuted_cols_head)  # dxd1
+    wx_permuted_cols_head[:,0] = wx_permuted_cols[:,0]
+    dx_permuted_cols_head = -lamda * flatten_by_cols(wx_permuted_cols_head)
     
     wy_permuted_rows_head = np.zeros_like(wy_permuted_rows)
-    wy_permuted_rows_head[0,:] = wy_permuted_rows[0,:]    # tmp_yy            LAST ROW OF WY MOVED TO 1ST ROW, ALL BUT 1ST ROW IS THEN SET TO 0
-    dy_permuted_rows_head = -lamda * flatten_by_cols(wy_permuted_rows_head)    # dyd1
+    wy_permuted_rows_head[0,:] = wy_permuted_rows[0,:]
+    dy_permuted_rows_head = -lamda * flatten_by_cols(wy_permuted_rows_head)
 
-    wx_no_tail = np.zeros_like(wx)  #  NO PERMUTATION
-    wx_no_tail[:,:-1] = wx[:,:-1]  #  wxx      LAST COLUMN OF WX IS 0
-    dx_no_tail = -lamda * flatten_by_cols(wx_no_tail)   # dxd2
+    wx_no_tail = np.zeros_like(wx)
+    wx_no_tail[:,:-1] = wx[:,:-1]
+    dx_no_tail = -lamda * flatten_by_cols(wx_no_tail)
 
-    wy_no_tail = np.zeros_like(wy)  #  NO PERMUTATION
-    wy_no_tail[:-1,:] = wy[:-1,:]  #  wyy       LAST ROW OF WY IS 0
-    dy_no_tail = -lamda * flatten_by_cols(wy_no_tail)   # dyd2
+    wy_no_tail = np.zeros_like(wy)
+    wy_no_tail[:-1,:] = wy[:-1,:]
+    dy_no_tail = -lamda * flatten_by_cols(wy_no_tail)
     
     Ax = spdiags([dx_permuted_cols_head, dx_no_tail], [-k+r, -r], k, k)  
     
@@ -310,7 +359,6 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     ######################################################
 
     ############ RESTORE REDUCED SIZE SMOOTH MATRIX TO FULL SIZE:  ###########################
-    #if scale image_maxRGB_01_smooth.shape == image_maxRGB.shape: image_maxRGB_01_smooth = image_maxRGB_reduced_01_smooth
     image_maxRGB_01_smooth = imresize(image_maxRGB_reduced_01_smooth, size=image_maxRGB.shape)
     ######################################################
     

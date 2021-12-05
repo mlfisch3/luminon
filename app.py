@@ -1,4 +1,4 @@
-from bimef import bimef, entropy, normalize_array
+from bimef import bimef, entropy, normalize_array, array_info
 import cv2
 import numpy as np
 from matplotlib import image as img
@@ -10,54 +10,6 @@ st.set_page_config(page_title="Luminon", layout="wide")
 def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3, 
             default_dim_size=(50), default_dim_threshold=0.5, default_a=-0.3293, default_b=1.258, default_exposure_ratio=-1):
 
-    @st.cache(max_entries=1)
-    def array_info(array, print_info=True, return_info=False, return_info_str=False):
-
-        array = array
-        info = {}
-        info['dtype'] = array.dtype
-        info['ndim'] = array.ndim
-        info['shape'] = array.shape
-        info['max'] = array.max()
-        info['min'] = array.min()
-        info['mean'] = array.mean()
-        info['std'] = array.std()
-        info['size'] = array.size
-        info['nonzero'] = np.count_nonzero(array)
-        info['layer_variation'] = 0
-        info['entropy'] = entropy(array)
-
-        if array.ndim > 2:
-            info['layer_variation'] = array.std(axis=array.ndim-1).mean()
-
-        info['pct'] = 100 * info['nonzero'] / info['size']
-
-        if print_info:
-            print('{dtype}  {shape}'.format(**info))
-            print('nonzero: {nonzero} / {size}  ({pct:.1f} %)'.format(**info))
-            print('min:  {min:.2f}   max: {max:.2f}'.format(**info))
-            print('mean: {mean:.2f}   std: {std:.2f}'.format(**info), end="")
-            if array.ndim > 2:
-                print('     layer_variation: {layer_variation:.2f}'.format(**info))
-
-            print('entropy: {entropy:.2f}'.format(**info), end="")
-
-        out = []
-        if return_info:
-            out.append(info)
-        if return_info_str:
-            info_str = f'shape: {info["shape"]}\n'
-            info_str += f'size: {info["size"]}\nnonzero: {info["nonzero"]}  ({info["pct"]:.4f} %)\n'
-            info_str += f'min: {info["min"]}    max: {info["max"]}\n'
-            info_str += f'mean: {info["mean"]:.4f}    std: {info["std"]:.4f}\n'
-            if array.ndim > 2:
-                info_str += f'layer_variation: {info["layer_variation"]:.4f}\n'
-
-            info_str += f'entropy: {info["entropy"]:.4f}\n'
-
-            out.append(info_str)
-
-        return out
 
     @st.cache(max_entries=1)
     def adjust_intensity(
@@ -84,7 +36,7 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
 
 
     fImage = st.sidebar.file_uploader("Upload image file:")
-    
+
     granularity = float(st.sidebar.text_input('Resolution   (default = 0.1)', str(default_granularity)))
     power = float(st.sidebar.text_input('Power     (default = 0.8)', str(default_power)))
     smoothness = float(st.sidebar.text_input('Smoothness   (default = 0.3)', str(default_smoothness)))
