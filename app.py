@@ -83,6 +83,8 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
         return (enhanced * 255).astype(np.uint8)
 
 
+    fImage = st.sidebar.file_uploader("Upload image file:")
+    
     granularity = float(st.sidebar.text_input('Resolution   (default = 0.1)', str(default_granularity)))
     power = float(st.sidebar.text_input('Power     (default = 0.8)', str(default_power)))
     smoothness = float(st.sidebar.text_input('Smoothness   (default = 0.3)', str(default_smoothness)))
@@ -91,8 +93,6 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
     a = float(st.sidebar.text_input('Camera A   (default = -0.3293)', str(default_a)))
     b = float(st.sidebar.text_input('Camera B   (default = 1.1258)', str(default_b)))
     exposure_ratio = float(st.sidebar.text_input('Exposure Ratio   (default = -1 (auto))', str(default_exposure_ratio)))
-
-    fImage = st.sidebar.file_uploader("Upload image file:")
 
     col1, col2 = st.columns(2)
 

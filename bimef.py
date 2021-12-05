@@ -305,25 +305,25 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     ######################################################
 
     ############ SOLVE LINEAR EQUATION:  ###########################
-    image_maxRGB_reduced_01_latent = solve_linear_equation(image_maxRGB_reduced_01, illumination_map, method=solver, CG_prec=CG_prec, CG_TOL=CG_TOL, LU_TOL=LU_TOL, MAX_ITER=MAX_ITER, FILL=FILL)
+    image_maxRGB_reduced_01_smooth = solve_linear_equation(image_maxRGB_reduced_01, illumination_map, method=solver, CG_prec=CG_prec, CG_TOL=CG_TOL, LU_TOL=LU_TOL, MAX_ITER=MAX_ITER, FILL=FILL)
     ######################################################
 
-    ############ RESTORE REDUCED SIZE LATENT MATRIX TO FULL SIZE:  ###########################
-    #if scale image_maxRGB_01_latent.shape == image_maxRGB.shape: image_maxRGB_01_latent = image_maxRGB_reduced_01_latent
-    image_maxRGB_01_latent = imresize(image_maxRGB_reduced_01_latent, size=image_maxRGB.shape)
+    ############ RESTORE REDUCED SIZE SMOOTH MATRIX TO FULL SIZE:  ###########################
+    #if scale image_maxRGB_01_smooth.shape == image_maxRGB.shape: image_maxRGB_01_smooth = image_maxRGB_reduced_01_smooth
+    image_maxRGB_01_smooth = imresize(image_maxRGB_reduced_01_smooth, size=image_maxRGB.shape)
     ######################################################
     
     ############# CALCULATE WEIGHTS ###############################
-    weights = np.power(image_maxRGB_01_latent, enhance)  
+    weights = np.power(image_maxRGB_01_smooth, enhance)  
     weights = np.expand_dims(weights, axis=2)
     weights  = np.where(weights>1,1,weights)
     ######################################################
     
     image_01 = normalize_array(image)
-    dim_pixels = np.zeros_like(image_maxRGB_01_latent)
+    dim_pixels = np.zeros_like(image_maxRGB_01_smooth)
     
     if exposure_ratio==-1:
-        dim_pixels = image_maxRGB_01_latent<dim_threshold
+        dim_pixels = image_maxRGB_01_smooth<dim_threshold
         Y = get_dim_pixels(image_01, dim_pixels, dim_size=dim_size) 
         exposure_ratio = optimize_exposure_ratio(Y, a, b, lo=lo, hi=hi, npoints=npoints, clip=clip, normalize=normalize, nbins=nbins)
     
