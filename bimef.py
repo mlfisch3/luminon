@@ -10,31 +10,32 @@ from PIL import Image
 from datetime import datetime
 import streamlit as st
 
+MAX_ENTRIES = 1
 #### Array Helper Functions
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def diff(x, axis=0):
     if axis==0:
         return x[1:,:]-x[:-1,:]
     else:
         return x[:,1:]-x[:,:-1]
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def cyclic_diff(x,axis=0):
     if axis==0:
         return x[0,:]-x[-1,:]
     else:
         return (x[:,0]-x[:,-1])[None,:].T
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def flatten_by_cols(x):
     return x.T.reshape(np.prod(x.shape), -1).flatten()
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def flatten_by_rows(x):
     return x.reshape(-1, np.prod(x.shape)).flatten()
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def geometric_mean(image):
     try:
         assert image.ndim == 3, 'Warning: Expected a 3d-array.  Returning input as-is.'
@@ -43,7 +44,7 @@ def geometric_mean(image):
         print(msg)
         return image
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def normalize_array(array):
     if array.ndim==3:
         array_ = array - array.min(axis=2).min(axis=1).min(axis=0)#.astype(np.float32)
@@ -57,7 +58,7 @@ def normalize_array(array):
         array_ = array - array.min(axis=0)#.astype(np.float32)
         return array_ / array_.max(axis=0)
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def imresize(image, scale=-1, size=(-1,-1)):
     ''' image: numpy array with shape (n, m) or (n, m, 3)
        scale: mulitplier of array height & width (if scale > 0)
@@ -92,14 +93,14 @@ def imresize(image, scale=-1, size=(-1,-1)):
 
 
 #### Texture Functions
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def delta(x):   
     
     dt0_v = np.vstack([diff(x, axis=0),cyclic_diff(x,axis=0)])
     dt0_h = np.hstack([diff(x,axis=1),cyclic_diff(x,axis=1)])
     return dt0_v, dt0_h
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def kernel(dt0_v, dt0_h, sigma):
     try:
         assert sigma%2==1, f'Warning: sigma should be odd. Using sigma = {sigma + 1}.'
@@ -113,7 +114,7 @@ def kernel(dt0_v, dt0_h, sigma):
     
     return kernel_v, kernel_h
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 
     W_v = 1/(np.abs(kernel_v) * np.abs(dt0_v) + sharpness)
@@ -124,7 +125,7 @@ def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 
 #### Illumination Map Function 
 
-@st.cache(max_entries=10)
+@st.cache(max_entries=MAX_ENTRIES)
 def construct_map(wx, wy, lamda):
     
     r, c = wx.shape        
@@ -171,7 +172,7 @@ def construct_map(wx, wy, lamda):
 
 #### Sparse solver function
 
-@st.cache(max_entries=1)
+@st.cache(max_entries=MAX_ENTRIES)
 def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
     """
     Solves for x = b/A  [[b is vector(B)]]
@@ -198,7 +199,7 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
                 
     return c
 
-@st.cache(max_entries=1)
+@st.cache(max_entries=MAX_ENTRIES)
 def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
 
     r, c = G.shape
@@ -209,7 +210,7 @@ def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0
 
     
 #### Exposure Functions
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def applyK(G, k, a=-0.3293, b=1.1258, verbose=False, clip=False):
 
     if k==1.0:
@@ -229,7 +230,7 @@ def applyK(G, k, a=-0.3293, b=1.1258, verbose=False, clip=False):
 
     return G_adjusted
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def entropy(array, normalize=True, nbins=100):
     a = array.flatten().astype(np.float32)
     
@@ -249,7 +250,7 @@ def entropy(array, normalize=True, nbins=100):
     return (-1* np.dot(frequencies, np.log2(frequencies)))
 
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     
     dim_pixels_reduced = imresize(dim_pixels,size=dim_size)
@@ -260,7 +261,7 @@ def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     Y = Y[dim_pixels_reduced]
     return Y
 
-@st.cache()
+@st.cache(max_entries=MAX_ENTRIES)
 def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20, clip=True, normalize=True, nbins=100):
   
     if sum(array.shape)==0:
@@ -271,7 +272,7 @@ def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20, clip=True, norm
     optimal_index = np.argmax(entropies)
     return sample_ratios[optimal_index]
       
-@st.cache(max_entries=10)
+@st.cache(max_entries=MAX_ENTRIES)
 def bimef(image, exposure_ratio=-1, enhance=0.5, 
           a=-0.3293, b=1.1258, lamda=0.5, 
           sigma=5, scale=0.3, sharpness=0.001, 
