@@ -78,11 +78,13 @@ def cyclic_diff(x,axis=0):
 
 @st.cache(max_entries=MAX_ENTRIES)
 def flatten_by_cols(x):
-    return x.T.reshape(np.prod(x.shape), -1).flatten()
+    return x.flatten(order='F')
+    #return x.T.reshape(np.prod(x.shape), -1).flatten()
 
 @st.cache(max_entries=MAX_ENTRIES)
 def flatten_by_rows(x):
-    return x.reshape(-1, np.prod(x.shape)).flatten()
+    return x.flatten(order='C')
+    #return x.reshape(-1, np.prod(x.shape)).flatten()
 
 @st.cache(max_entries=MAX_ENTRIES)
 def geometric_mean(image):
@@ -95,17 +97,25 @@ def geometric_mean(image):
 
 @st.cache(max_entries=MAX_ENTRIES)
 def normalize_array(array):
-    if array.ndim==3:
-        array_ = array - array.min(axis=2).min(axis=1).min(axis=0)
-        return array_ / array_.max(axis=2).max(axis=1).max(axis=0)
-    
-    if array.ndim==2:
-        array_ = array - array.min(axis=1).min(axis=0)
-        return array_ / array_.max(axis=1).max(axis=0)
 
-    if array.ndim==1:
-        array_ = array - array.min(axis=0)
-        return array_ / array_.max(axis=0)
+    array_ = array.flatten()
+    lo = array_.min()
+    hi = array_.max()
+
+    normalized = array - lo
+    return normalized / hi
+
+        
+def normalize_arrays(A, B):
+
+    vals = np.hstack([A,B]).flatten()
+    lo = vals.min()
+    hi = vals.max()
+
+    A_ = A - lo
+    B_ = B - lo
+
+    return A_/hi, B_/hi
 
 @st.cache(max_entries=MAX_ENTRIES)
 def imresize(image, scale=-1, size=(-1,-1)):
@@ -260,10 +270,13 @@ def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0
     
 #### Exposure Functions
 @st.cache(max_entries=MAX_ENTRIES)
-def applyK(G, k, a=-0.3293, b=1.1258, verbose=False, clip=False):
+def applyK(G, k, a=-0.3293, b=1.1258, verbose=False):
 
     if k==1.0:
         return G
+
+    if k<=0:
+        return np.ones_like(G)
 
     gamma = k**a
     beta = np.exp((1-gamma)*b)
@@ -271,32 +284,40 @@ def applyK(G, k, a=-0.3293, b=1.1258, verbose=False, clip=False):
     if verbose:
         print(f'a: {a:.4f}, b: {b:.4f}, k: {k:.4f}, gamma: {gamma:.4f}, beta: {beta}.  ----->  output = {beta:.4} * image^{gamma:.4f}')
 
-    G_adjusted = np.power(G,gamma)*beta  #mod 20211129 0035
-    
-    if clip:
-        G_adjusted = np.where(G_adjusted>1,1,G_adjusted)
-        G_adjusted = np.where(G_adjusted<0,0,G_adjusted)
+    G_adjusted = np.power(G,gamma)*beta
 
     return G_adjusted
 
 @st.cache(max_entries=MAX_ENTRIES)
-def entropy(array, normalize=True, nbins=100):
-    a = array.flatten().astype(np.float32)
+def entropy(array, bins=255, lo=0, hi=255):
+
+    if array.dtype.name[:5] == 'float':
+        array = (array * 255).astype(np.uint8)
     
-    if normalize:
-        a = normalize_array(a)
-        lo = 0.
-        hi = 1.
-    else:
-        lo = min(a) - 0.001
-        hi = max(a) + 0.001
-        
-    n_bins = complex(0,nbins)
-    bins = np.r_[lo:hi:n_bins]
-    hist = np.histogram(a,bins=bins)
-    counts = hist[0][hist[0]>0]
-    frequencies = counts / counts.sum()
+    counts = np.histogram(array,bins=bins, range=(lo,hi))[0]
+    frequencies = counts / counts.sum() + 1e-12
     return (-1* np.dot(frequencies, np.log2(frequencies)))
+
+@st.cache(max_entries=MAX_ENTRIES)
+def xentropy(p, q, bins=255, lo=0, hi=255):
+    if p.dtype.name[:5] == 'float':
+        p = (p * 255).astype(np.uint8)
+
+    if q.dtype.name[:5] == 'float':
+        q = (q * 255).astype(np.uint8)
+    
+    counts_p = np.histogram(p,bins=bins, range=(lo,hi))[0]
+    frequencies_p = counts_p / counts_p.sum() + 1e-12
+
+    counts_q = np.histogram(q,bins=bins, range=(lo,hi))[0]
+    frequencies_q = counts_q / counts_q.sum() + 1e-12
+
+    return (-1* np.dot(frequencies_p, np.log2(frequencies_q)))
+
+
+@st.cache(max_entries=MAX_ENTRIES)
+def KL(P,Q, bins=255, lo=0, hi=255):
+    return xentropy(P,Q, bins=bins, lo=lo, hi=hi) - entropy(P, bins=bins, lo=lo, hi=hi)
 
 
 @st.cache(max_entries=MAX_ENTRIES)
@@ -311,13 +332,13 @@ def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     return Y
 
 @st.cache(max_entries=MAX_ENTRIES)
-def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20, clip=True, normalize=True, nbins=100):
+def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20):
   
     if sum(array.shape)==0:
         return 1.0
 
     sample_ratios = np.r_[lo:hi:np.complex(0,npoints)].tolist()
-    entropies = np.array(list(map(lambda k: entropy(applyK(array, k, a, b, clip=clip), normalize=normalize, nbins=nbins), sample_ratios)))
+    entropies = np.array(list(map(lambda k: entropy(applyK(array, k, a, b)), sample_ratios)))
     optimal_index = np.argmax(entropies)
     return sample_ratios[optimal_index]
       
@@ -327,11 +348,9 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
           sigma=5, scale=0.3, sharpness=0.001, 
           dim_threshold=0.5, dim_size=(50,50), 
           solver='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50, 
-          clip=False, normalize=True, nbins=100, lo=1, hi=7, npoints=20,
-           verbose=False, print_info=True):
+          lo=1, hi=7, npoints=20,
+          verbose=False, print_info=True):
     
-    ''' parameters (clip, normalize, nbins) are used only by optimize_exposure_ratio()'''
-  
     tic = datetime.now()
 
     if image.ndim == 3: 
@@ -374,9 +393,9 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     if exposure_ratio==-1:
         dim_pixels = image_maxRGB_01_smooth<dim_threshold
         Y = get_dim_pixels(image_01, dim_pixels, dim_size=dim_size) 
-        exposure_ratio = optimize_exposure_ratio(Y, a, b, lo=lo, hi=hi, npoints=npoints, clip=clip, normalize=normalize, nbins=nbins)
+        exposure_ratio = optimize_exposure_ratio(Y, a, b, lo=lo, hi=hi, npoints=npoints)
     
-    image_exposure_adjusted = applyK(image_01, exposure_ratio, a, b, verbose=verbose, clip=clip) 
+    image_exposure_adjusted = applyK(image_01, exposure_ratio, a, b, verbose=verbose) 
     image_exposure_adjusted_clipped = np.where(image_exposure_adjusted>1,1,image_exposure_adjusted)    
     
     ############ Final Result:  ###########################

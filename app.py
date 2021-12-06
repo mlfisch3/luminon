@@ -1,4 +1,4 @@
-from bimef import bimef, entropy, normalize_array, array_info
+from bimef import bimef, entropy, xentropy, KL, normalize_array, array_info
 import cv2
 import numpy as np
 from matplotlib import image as img
@@ -19,7 +19,7 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
                          sigma=5, scale=0.1, sharpness=0.001, 
                          dim_threshold=0.5, dim_size=(50,50), 
                          solver='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50, 
-                         clip=False, normalize=True, nbins=100, lo=1, hi=7, npoints=20
+                         lo=1, hi=7, npoints=20
                          ):
         
         enhanced = bimef(
@@ -29,7 +29,7 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
                          sigma=sigma, scale=scale, sharpness=sharpness, 
                          dim_threshold=dim_threshold, dim_size=dim_size, 
                          solver=solver, CG_prec='ILU', CG_TOL=CG_TOL, LU_TOL=LU_TOL, MAX_ITER=MAX_ITER, FILL=FILL, 
-                         clip=clip, normalize=normalize, nbins=nbins, lo=lo, hi=hi, npoints=npoints
+                         lo=lo, hi=hi, npoints=npoints
                          ) 
 
         return (enhanced * 255).astype(np.uint8)
@@ -93,10 +93,15 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
 
         image_np_ai_info, image_np_ai_info_str = array_info(image_np_ai, print_info=False, return_info=True, return_info_str=True)
 
+        relative_entropy = xentropy(image_np, image_np_ai)
+        kl_divergence = KL(image_np, image_np_ai)
+
         entropy_change_abs = image_np_ai_info['entropy'] - image_np_info['entropy']
         entropy_change_rel = (image_np_ai_info['entropy'] / image_np_info['entropy']) - 1.0
 
-        st.sidebar.text(f'entropy change: {entropy_change_abs:.4f} ({entropy_change_rel * 100.0:.4f} %)\n')        
+        st.sidebar.text(f'entropy change: {entropy_change_abs:.4f} ({entropy_change_rel * 100.0:.4f} %)')        
+        st.sidebar.text(f'relative entropy: {relative_entropy:.4f}')
+        st.sidebar.text(f'KL divergence: {kl_divergence:.4f}\n')
         
         st.sidebar.text("Pixel Statistics [Original Image]:")
         
