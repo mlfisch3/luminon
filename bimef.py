@@ -9,12 +9,15 @@ from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator
 from PIL import Image
 from datetime import datetime
 import streamlit as st
+from psutil import Process
+import os
 
 MAX_ENTRIES = 1
 
 #### Array Helper Functions
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def array_info(array, print_info=True, return_info=False, return_info_str=False):
 
     info = {}
@@ -63,6 +66,7 @@ def array_info(array, print_info=True, return_info=False, return_info_str=False)
     return out
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def diff(x, axis=0):
     if axis==0:
         return x[1:,:]-x[:-1,:]
@@ -70,6 +74,7 @@ def diff(x, axis=0):
         return x[:,1:]-x[:,:-1]
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def cyclic_diff(x,axis=0):
     if axis==0:
         return x[0,:]-x[-1,:]
@@ -77,16 +82,19 @@ def cyclic_diff(x,axis=0):
         return (x[:,0]-x[:,-1])[None,:].T
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def flatten_by_cols(x):
     return x.flatten(order='F')
     #return x.T.reshape(np.prod(x.shape), -1).flatten()
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def flatten_by_rows(x):
     return x.flatten(order='C')
     #return x.reshape(-1, np.prod(x.shape)).flatten()
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def geometric_mean(image):
     try:
         assert image.ndim == 3, 'Warning: Expected a 3d-array.  Returning input as-is.'
@@ -96,34 +104,47 @@ def geometric_mean(image):
         return image
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
-def normalize_array(array):
+# #@profile
+# def autoscale_array(array):
 
-    array_ = array.flatten()
-    lo = array_.min()
-    hi = array_.max()
+#     array_ = array.flatten()
+#     lo = array_.min()
+#     hi = array_.max()
 
-    normalized = array - lo
-    return normalized / hi
+#     normalized = array - lo
+#     return normalized / hi
 
-        
-def normalize_arrays(A, B):
+#@profile
+def autoscale_array(array_):
 
-    vals = np.hstack([A,B]).flatten()
-    lo = vals.min()
-    hi = vals.max()
+    array = array_.astype(np.float32)
+    lo = array.flatten().min()
+    array = array - lo    
+    hi = array.flatten().max()
+    array = array / hi
+ 
+    return array
 
-    A_ = A - lo
-    B_ = B - lo
+def autoscale_arrays(A, B):
 
-    return A_/hi, B_/hi
+    lo = np.hstack([A,B]).flatten().min()
+    
+    A = A - lo
+    B = B - lo
+
+    hi = np.hstack([A,B]).flatten().max()
+    A = A / hi
+    B = B / hi
+    return A, B
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def imresize(image, scale=-1, size=(-1,-1)):
     ''' image: numpy array with shape (n, m) or (n, m, 3)
        scale: mulitplier of array height & width (if scale > 0)
        size: (num_rows, num_cols) 2-tuple of ints > 0 (only used if scale <= 0)'''
     
-    if image.shape == size:
+    if (image.shape == size) | (scale == 1):
         return image
 
     if image.ndim==2:
@@ -153,6 +174,7 @@ def imresize(image, scale=-1, size=(-1,-1)):
 
 #### Texture Functions
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def delta(x):   
     
     dt0_v = np.vstack([diff(x, axis=0),cyclic_diff(x,axis=0)])
@@ -160,6 +182,7 @@ def delta(x):
     return dt0_v, dt0_h
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def kernel(dt0_v, dt0_h, sigma):
     try:
         assert sigma%2==1, f'Warning: sigma should be odd. Using sigma = {sigma + 1}.'
@@ -174,6 +197,7 @@ def kernel(dt0_v, dt0_h, sigma):
     return kernel_v, kernel_h
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 
     W_v = 1/(np.abs(kernel_v) * np.abs(dt0_v) + sharpness)
@@ -185,6 +209,7 @@ def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 #### Illumination Map Function 
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def construct_map(wx, wy, lamda):
     
     r, c = wx.shape        
@@ -199,7 +224,7 @@ def construct_map(wx, wy, lamda):
     wy_permuted_rows = np.roll(wy,1,axis=0)
     dy_permuted_rows = -lamda * flatten_by_cols(wy_permuted_rows)
 
-    D = 1 - (dx + dy + dx_permuted_cols + dy_permuted_rows)
+    A = 1 - (dx + dy + dx_permuted_cols + dy_permuted_rows)
         
     wx_permuted_cols_head = np.zeros_like(wx_permuted_cols) 
     wx_permuted_cols_head[:,0] = wx_permuted_cols[:,0]
@@ -221,7 +246,7 @@ def construct_map(wx, wy, lamda):
     
     Ay = spdiags([dy_permuted_rows_head, dy_no_tail], [-r+1,-1],  k, k)
     
-    d = spdiags(D, 0, k, k)
+    d = spdiags(A, 0, k, k)
     
     A = Ax + Ay
     A = A + A.T + d
@@ -232,6 +257,7 @@ def construct_map(wx, wy, lamda):
 #### Sparse solver function
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
     """
     Solves for x = b/A  [[b is vector(B)]]
@@ -240,7 +266,7 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
     
    """
     N = A.shape[0]
-    b = B.flatten(order='F')
+    #b = B.flatten(order='F')
     if method == 'cg':
         if CG_prec == 'ILU':
             # Find ILU preconditioner (constant in time)
@@ -249,27 +275,29 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
         else:
             M = None
         x0 = np.random.random(N) # Start vector is uniform
-        c, info = cg(A, b, x0=x0, tol=CG_TOL, maxiter=MAX_ITER, M=M)
+        return cg(A, B.flatten(order='F'), x0=x0, tol=CG_TOL, maxiter=MAX_ITER, M=M)[0].astype(np.float32)
+
         if info==MAX_ITER:
             print(f'Warning: cg max iterations ({MAX_ITER}) reached without convergence')
         
     elif method == 'direct':
-        c = spsolve(A, b)       
+        return spsolve(A, B.flatten(order='F')).astype(np.float32)
                 
-    return c
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
 
     r, c = G.shape
-    G_ = flatten_by_cols(G)
-    g = solver_sparse(A,G_, method, CG_prec, CG_TOL, LU_TOL, MAX_ITER, FILL)
+    #G_ = flatten_by_cols(G)
+    return solver_sparse(A,G.flatten(order='F'), method, CG_prec, CG_TOL, LU_TOL, MAX_ITER, FILL).reshape(c,r).T
     
-    return g.reshape(c,r).T
+    #return g.reshape(c,r).T
 
     
 #### Exposure Functions
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def applyK(G, k, a=-0.3293, b=1.1258, verbose=False):
 
     if k==1.0:
@@ -284,21 +312,25 @@ def applyK(G, k, a=-0.3293, b=1.1258, verbose=False):
     if verbose:
         print(f'a: {a:.4f}, b: {b:.4f}, k: {k:.4f}, gamma: {gamma:.4f}, beta: {beta}.  ----->  output = {beta:.4} * image^{gamma:.4f}')
 
-    G_adjusted = np.power(G,gamma)*beta
+    return (np.power(G,gamma)*beta).astype(np.float32)
 
-    return G_adjusted
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def entropy(array, bins=255, lo=0, hi=255):
 
     if array.dtype.name[:5] == 'float':
         array = (array * 255).astype(np.uint8)
     
-    counts = np.histogram(array,bins=bins, range=(lo,hi))[0]
-    frequencies = counts / counts.sum() + 1e-12
-    return (-1* np.dot(frequencies, np.log2(frequencies)))
+    counts = np.histogram(array,bins=bins, range=(lo,hi))[0]#.astype(np.uint16)
+    counts = counts[counts>0]
+    N = counts.sum()
+    return (np.log2(N) - (np.dot(counts, np.log2(counts)) / N)).astype(np.float32)
+    #frequencies = counts / counts.sum() + 1e-12
+    #return (-1* np.dot(frequencies, np.log2(frequencies)))
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def xentropy(p, q, bins=255, lo=0, hi=255):
     if p.dtype.name[:5] == 'float':
         p = (p * 255).astype(np.uint8)
@@ -306,32 +338,91 @@ def xentropy(p, q, bins=255, lo=0, hi=255):
     if q.dtype.name[:5] == 'float':
         q = (q * 255).astype(np.uint8)
     
-    counts_p = np.histogram(p,bins=bins, range=(lo,hi))[0]
-    frequencies_p = counts_p / counts_p.sum() + 1e-12
-
-    counts_q = np.histogram(q,bins=bins, range=(lo,hi))[0]
-    frequencies_q = counts_q / counts_q.sum() + 1e-12
-
-    return (-1* np.dot(frequencies_p, np.log2(frequencies_q)))
-
+    counts_p = np.histogram(p,bins=bins, range=(lo,hi))[0] + 1e-5
+    counts_q = np.histogram(q,bins=bins, range=(lo,hi))[0] + 1e-5
+    N = counts_q.sum()
+    return (np.log2(N) - (np.dot(counts_p, np.log2(counts_q)) / N)).astype(np.float32)
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def KL(P,Q, bins=255, lo=0, hi=255):
     return xentropy(P,Q, bins=bins, lo=lo, hi=hi) - entropy(P, bins=bins, lo=lo, hi=hi)
 
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def bits2U16(bit_hot_array, mask=None):
+    base2=2**np.arange(16, dtype=np.uint16)[::-1]
+    if mask is not None:
+        base2=base2*mask
+    return np.dot(bit_hot_array, base2)
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def bit_split(array):
+    return np.unpackbits(array).reshape(*array.shape, 8)
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def bit_concat(p, q):
+    if p.dtype != 'uint8':
+        if p.dtype.name[:5] == 'float':
+            p = 255 * p
+        p = p.astype(np.uint8)
+    if q.dtype != 'uint8':
+        if q.dtype.name[:5] == 'float':
+            q = 255 * q
+        q = q.astype(np.uint8)
+        
+    p_ = bit_split(p.flatten())
+    q_ = bit_split(q.flatten())
+    pq = np.hstack([p_,q_])
+    return bits2U16(pq)
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def joint_entropy(p,q, bins=256*256, lo=0, hi=256*256):
+    pq = bit_concat(p,q)
+    pq_counts = np.histogram(pq, bins=bins, range=(lo,hi))[0]
+    pq_counts = pq_counts[pq_counts>0]
+    N = pq_counts.sum()
+    return (np.log2(N) - (np.dot(pq_counts, np.log2(pq_counts)) / N)).astype(np.float32)
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def mutual_information(p,q):
+    return entropy(p) + entropy(q) - joint_entropy(p,q)
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def variation_of_information(p,q):
+    return joint_entropy(p,q) - mutual_information(p,q)
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def normalized_variation_of_information(p,q):
+    joint = joint_entropy(p,q) + 1e-5
+    mutual = mutual_information(p,q)
+    return (1. - mutual/joint)
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
+def conditional_entropy(p,q):
+    return entropy(p) - mutual_information(p,q)
+
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     
-    dim_pixels_reduced = imresize(dim_pixels,size=dim_size)
+    dim_pixels = imresize(dim_pixels,size=dim_size)
 
-    image_reduced = imresize(image,size=dim_size)
-    image_reduced = np.where(image_reduced>0,image_reduced,0)
-    Y = geometric_mean(image_reduced)
-    Y = Y[dim_pixels_reduced]
-    return Y
+    image = imresize(image,size=dim_size)
+    image = np.where(image>0,image,0)
+    Y = geometric_mean(image)
+    return Y[dim_pixels]
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20):
   
     if sum(array.shape)==0:
@@ -343,6 +434,7 @@ def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20):
     return sample_ratios[optimal_index]
       
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@profile
 def bimef(image, exposure_ratio=-1, enhance=0.5, 
           a=-0.3293, b=1.1258, lamda=0.5, 
           sigma=5, scale=0.3, sharpness=0.001, 
@@ -350,8 +442,15 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
           solver='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50, 
           lo=1, hi=7, npoints=20,
           verbose=False, print_info=True):
+
+    pid = os.getpid()
+    mem = Process(pid).memory_info()[0]/float(2**20)
+
+    print(f'[{datetime.now().isoformat()}]  [bimef|{pid}]    {mem:.2f}')
     
     tic = datetime.now()
+
+    mem_check = np.copy(image)
 
     if image.ndim == 3: 
         image = image[:,:,:3]
@@ -361,7 +460,7 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     if (scale <= 0) | (scale >= 1) : image_maxRGB_reduced = image_maxRGB
     else: image_maxRGB_reduced = imresize(image_maxRGB, scale)
         
-    image_maxRGB_reduced_01 = normalize_array(image_maxRGB_reduced)
+    image_maxRGB_reduced_01 = autoscale_array(image_maxRGB_reduced)
     
     ############ TEXTURE MAP  ###########################
     dt0_v, dt0_h = delta(image_maxRGB_reduced_01)
@@ -387,7 +486,7 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     weights  = np.where(weights>1,1,weights)
     ######################################################
     
-    image_01 = normalize_array(image)
+    image_01 = autoscale_array(image)
     dim_pixels = np.zeros_like(image_maxRGB_01_smooth)
     
     if exposure_ratio==-1:
@@ -396,15 +495,23 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
         exposure_ratio = optimize_exposure_ratio(Y, a, b, lo=lo, hi=hi, npoints=npoints)
     
     image_exposure_adjusted = applyK(image_01, exposure_ratio, a, b, verbose=verbose) 
-    image_exposure_adjusted_clipped = np.where(image_exposure_adjusted>1,1,image_exposure_adjusted)    
+    image_exposure_adjusted = np.where(image_exposure_adjusted>1,1,image_exposure_adjusted)    
     
     ############ Final Result:  ###########################
-    enhanced_image =  image_01 * weights + image_exposure_adjusted_clipped * (1 - weights)   
+    #enhanced_image =  image_01 * weights + image_exposure_adjusted * (1 - weights)   
+    image_exposure_adjusted = image_exposure_adjusted * (1 - weights)
+    image_exposure_adjusted = image_exposure_adjusted + image_01 * weights
+    image_exposure_adjusted = (255 * image_exposure_adjusted).astype(np.uint8)
     ##################################################
     
     toc = datetime.now()
 
     if print_info:
         print(f'[{datetime.now().isoformat()}] exposure_ratio: {exposure_ratio:.4f}, enhance: {enhance:.4f}, lamda: {lamda:.4f}, scale: {scale:.4f}, runtime: {(toc-tic).total_seconds():.4f}s')
-        
-    return enhanced_image
+
+    pid = os.getpid()
+    mem = Process(pid).memory_info()[0]/float(2**20)
+
+    print(f'[{datetime.now().isoformat()}]  [bimef|{pid}]    {mem:.2f}')
+
+    return image_exposure_adjusted

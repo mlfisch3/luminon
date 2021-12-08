@@ -1,16 +1,23 @@
-from bimef import bimef, entropy, xentropy, KL, normalize_array, array_info
+from bimef import bimef, entropy, xentropy, KL, autoscale_array, array_info
+from bimef import joint_entropy, mutual_information, variation_of_information, normalized_variation_of_information, conditional_entropy
 import cv2
 import numpy as np
 from matplotlib import image as img
 import streamlit as st
-import time
+from datetime import datetime
+from psutil import Process
+import os
+
 
 st.set_page_config(page_title="Luminon", layout="wide")
 
 def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3, 
             default_dim_size=(50), default_dim_threshold=0.5, default_a=-0.3293, default_b=1.258, default_exposure_ratio=-1):
 
+    pid = os.getpid()
+    mem = Process(pid).memory_info()[0]/float(2**20)
 
+    print(f'[{datetime.now().isoformat()}]  [run_app|{pid}]    {mem:.2f}')
     @st.cache(max_entries=1, show_spinner=False)
     def adjust_intensity(
                          array, 
@@ -22,7 +29,8 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
                          lo=1, hi=7, npoints=20
                          ):
         
-        enhanced = bimef(
+
+        return bimef(
                          array[:,:,[2,1,0]], 
                          exposure_ratio=exposure_ratio, enhance=enhance, 
                          a=a, b=b, lamda=lamda, 
@@ -31,9 +39,6 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
                          solver=solver, CG_prec='ILU', CG_TOL=CG_TOL, LU_TOL=LU_TOL, MAX_ITER=MAX_ITER, FILL=FILL, 
                          lo=lo, hi=hi, npoints=npoints
                          ) 
-
-        return (enhanced * 255).astype(np.uint8)
-
 
     fImage = st.sidebar.file_uploader("Upload image file:")
 
@@ -49,12 +54,12 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
     col1, col2 = st.columns(2)
 
     if fImage is not None:
-
+        
         input_file_name = str(fImage.__dict__['name'])
         input_file_ext = '.' + str(input_file_name.split('.')[-1])
         input_file_basename = input_file_name.replace(input_file_ext, '')
         np_array = np.frombuffer(fImage.getvalue(), np.uint8) 
-        image_np = cv2.imdecode(np_array, cv2.IMREAD_COLOR)       
+        image_np = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
 
         with col1:        
             st.header(f'Original Image')
@@ -66,12 +71,12 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
 
             button = st.download_button(label = "Download Original Image", data = image_np_binary, file_name = input_file_name, mime = "image/png")
 
-        start = time.time()
+        start = datetime.now()
         image_np_ai = adjust_intensity(image_np, exposure_ratio=exposure_ratio, scale=granularity, enhance=power, 
                                        lamda=smoothness, dim_size=(exposure_sample,exposure_sample), dim_threshold=sensitivity, a=a, b=b)
-        end = time.time()
-        process_time = end - start
-        print(f'Processing time: {process_time:.5f} s')
+        end = datetime.now()
+        process_time = (end - start).total_seconds()
+        print(f'[{datetime.now().isoformat()}]  Processing time: {process_time:.5f} s')
 
         processed_file_name = input_file_basename + '_AI' + input_file_ext
         with col2:        
@@ -86,34 +91,55 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
 
         st.text('\n\n\n\n\n\n\n\n')
         st.text('*Supported file extensions: jpg, jpeg, png, gif, bmp, pdf, svg, eps')
-        image_np_info, image_np_info_str = array_info(image_np, print_info=False, return_info=True, return_info_str=True)
+            
+        pid = os.getpid()
+        mem = Process(pid).memory_info()[0]/float(2**20)
 
-        r = process_time / image_np.size
-        print(f'{r*1000000:.5f} microseconds / pixel')
+        print(f'[{datetime.now().isoformat()}]  [run_app|{pid}]    {mem:.2f}')
+        #image_np_info, image_np_info_str = array_info(image_np, print_info=False, return_info=True, return_info_str=True)
 
-        image_np_ai_info, image_np_ai_info_str = array_info(image_np_ai, print_info=False, return_info=True, return_info_str=True)
+        #r = process_time / image_np.size
+        #print(f'{r*1000000:.5f} microseconds / pixel')
 
-        relative_entropy = xentropy(image_np, image_np_ai)
-        kl_divergence = KL(image_np, image_np_ai)
+#        image_np_ai_info, image_np_ai_info_str = array_info(image_np_ai, print_info=False, return_info=True, return_info_str=True)
 
-        entropy_change_abs = image_np_ai_info['entropy'] - image_np_info['entropy']
-        entropy_change_rel = (image_np_ai_info['entropy'] / image_np_info['entropy']) - 1.0
+        # relative_entropy = xentropy(image_np, image_np_ai)
+        # kl_divergence = KL(image_np, image_np_ai)
+        # s_joint = joint_entropy(image_np, image_np_ai)
+        # i_mutual = mutual_information(image_np, image_np_ai)
+        # voi = variation_of_information(image_np, image_np_ai)
+        # nvoi = normalized_variation_of_information(image_np, image_np_ai)
 
-        st.sidebar.text(f'entropy change: {entropy_change_abs:.4f} ({entropy_change_rel * 100.0:.4f} %)')        
-        st.sidebar.text(f'relative entropy: {relative_entropy:.4f}')
-        st.sidebar.text(f'KL divergence: {kl_divergence:.4f}\n')
+        # entropy_change_abs = image_np_ai_info['entropy'] - image_np_info['entropy']
+        # entropy_change_rel = (image_np_ai_info['entropy'] / image_np_info['entropy']) - 1.0
+
+        # st.sidebar.text(f'entropy change: {entropy_change_abs:.4f} ({entropy_change_rel * 100.0:.4f} %)\n')        
+        # st.sidebar.text(f'relative entropy: {relative_entropy:.4f}')
+        # st.sidebar.text(f'KL divergence: {kl_divergence:.4f}')
+        # st.sidebar.text(f'joint entropy: {s_joint:.4f}')
+        # st.sidebar.text(f'mutual information: {i_mutual:.4f}')
+        # st.sidebar.text(f'variation of information (VOI): {voi:.4f}')
+        # st.sidebar.text(f'normalized VOI: {nvoi:.4f}\n')
         
-        st.sidebar.text("Pixel Statistics [Original Image]:")
+        # st.sidebar.text("Pixel Statistics [Original Image]:")
         
-        st.sidebar.text(image_np_info_str)
+        # st.sidebar.text(image_np_info_str)
         
-        st.sidebar.text("\n\n\n\n\n")
+        # st.sidebar.text("\n\n\n\n\n")
         
-        st.sidebar.text("Pixel Statistics [Enhanced Image]:")
+        # st.sidebar.text("Pixel Statistics [Enhanced Image]:")
 
-        st.sidebar.text(image_np_ai_info_str)
+        # st.sidebar.text(image_np_ai_info_str)
 
 
 if __name__ == '__main__':
+    
+    pid = os.getpid()
+
+    mem = Process(pid).memory_info()[0]/float(2**20)
+    print(f'[{datetime.now().isoformat()}]  [main|{pid}]    {mem:.2f}')
 
     run_app()
+
+    mem = Process(pid).memory_info()[0]/float(2**20)
+    print(f'[{datetime.now().isoformat()}]  [main|{pid}]    {mem:.2f}')
