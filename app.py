@@ -11,7 +11,7 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
             default_dim_size=(50), default_dim_threshold=0.5, default_a=-0.3293, default_b=1.258, default_exposure_ratio=-1):
 
 
-    @st.cache(max_entries=1)
+    @st.cache(max_entries=1, show_spinner=False)
     def adjust_intensity(
                          array, 
                          exposure_ratio=-1, enhance=0.8, 

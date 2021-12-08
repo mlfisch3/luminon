@@ -14,7 +14,7 @@ MAX_ENTRIES = 1
 
 #### Array Helper Functions
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def array_info(array, print_info=True, return_info=False, return_info_str=False):
 
     info = {}
@@ -62,31 +62,31 @@ def array_info(array, print_info=True, return_info=False, return_info_str=False)
 
     return out
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def diff(x, axis=0):
     if axis==0:
         return x[1:,:]-x[:-1,:]
     else:
         return x[:,1:]-x[:,:-1]
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def cyclic_diff(x,axis=0):
     if axis==0:
         return x[0,:]-x[-1,:]
     else:
         return (x[:,0]-x[:,-1])[None,:].T
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def flatten_by_cols(x):
     return x.flatten(order='F')
     #return x.T.reshape(np.prod(x.shape), -1).flatten()
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def flatten_by_rows(x):
     return x.flatten(order='C')
     #return x.reshape(-1, np.prod(x.shape)).flatten()
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def geometric_mean(image):
     try:
         assert image.ndim == 3, 'Warning: Expected a 3d-array.  Returning input as-is.'
@@ -95,7 +95,7 @@ def geometric_mean(image):
         print(msg)
         return image
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def normalize_array(array):
 
     array_ = array.flatten()
@@ -117,7 +117,7 @@ def normalize_arrays(A, B):
 
     return A_/hi, B_/hi
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def imresize(image, scale=-1, size=(-1,-1)):
     ''' image: numpy array with shape (n, m) or (n, m, 3)
        scale: mulitplier of array height & width (if scale > 0)
@@ -152,14 +152,14 @@ def imresize(image, scale=-1, size=(-1,-1)):
 
 
 #### Texture Functions
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def delta(x):   
     
     dt0_v = np.vstack([diff(x, axis=0),cyclic_diff(x,axis=0)])
     dt0_h = np.hstack([diff(x,axis=1),cyclic_diff(x,axis=1)])
     return dt0_v, dt0_h
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def kernel(dt0_v, dt0_h, sigma):
     try:
         assert sigma%2==1, f'Warning: sigma should be odd. Using sigma = {sigma + 1}.'
@@ -173,7 +173,7 @@ def kernel(dt0_v, dt0_h, sigma):
     
     return kernel_v, kernel_h
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 
     W_v = 1/(np.abs(kernel_v) * np.abs(dt0_v) + sharpness)
@@ -184,7 +184,7 @@ def textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness):
 
 #### Illumination Map Function 
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def construct_map(wx, wy, lamda):
     
     r, c = wx.shape        
@@ -231,7 +231,7 @@ def construct_map(wx, wy, lamda):
 
 #### Sparse solver function
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
     """
     Solves for x = b/A  [[b is vector(B)]]
@@ -258,7 +258,7 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
                 
     return c
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
 
     r, c = G.shape
@@ -269,7 +269,7 @@ def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0
 
     
 #### Exposure Functions
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def applyK(G, k, a=-0.3293, b=1.1258, verbose=False):
 
     if k==1.0:
@@ -288,7 +288,7 @@ def applyK(G, k, a=-0.3293, b=1.1258, verbose=False):
 
     return G_adjusted
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def entropy(array, bins=255, lo=0, hi=255):
 
     if array.dtype.name[:5] == 'float':
@@ -298,7 +298,7 @@ def entropy(array, bins=255, lo=0, hi=255):
     frequencies = counts / counts.sum() + 1e-12
     return (-1* np.dot(frequencies, np.log2(frequencies)))
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def xentropy(p, q, bins=255, lo=0, hi=255):
     if p.dtype.name[:5] == 'float':
         p = (p * 255).astype(np.uint8)
@@ -315,12 +315,12 @@ def xentropy(p, q, bins=255, lo=0, hi=255):
     return (-1* np.dot(frequencies_p, np.log2(frequencies_q)))
 
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def KL(P,Q, bins=255, lo=0, hi=255):
     return xentropy(P,Q, bins=bins, lo=lo, hi=hi) - entropy(P, bins=bins, lo=lo, hi=hi)
 
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     
     dim_pixels_reduced = imresize(dim_pixels,size=dim_size)
@@ -331,7 +331,7 @@ def get_dim_pixels(image,dim_pixels,dim_size=(50,50)):
     Y = Y[dim_pixels_reduced]
     return Y
 
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20):
   
     if sum(array.shape)==0:
@@ -342,7 +342,7 @@ def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20):
     optimal_index = np.argmax(entropies)
     return sample_ratios[optimal_index]
       
-@st.cache(max_entries=MAX_ENTRIES)
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 def bimef(image, exposure_ratio=-1, enhance=0.5, 
           a=-0.3293, b=1.1258, lamda=0.5, 
           sigma=5, scale=0.3, sharpness=0.001, 
