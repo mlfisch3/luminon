@@ -9,12 +9,33 @@ from scipy.sparse.linalg import cg, spsolve, spilu, LinearOperator
 from PIL import Image
 from datetime import datetime
 import streamlit as st
-from psutil import Process
+#from psutil import Process
+import psutil
 import os
+import gc
 
 MAX_ENTRIES = 1
 
+def log_memory(ref_id):
+    pid = os.getpid()
+    mem = psutil.Process(pid).memory_info()[0]/float(2**20)
+    virt = psutil.virtual_memory()[3]/float(2**20)
+    swap = psutil.swap_memory()[1]/float(2**20)
+
+    print(f'[{datetime.now().isoformat()}]  [{ref_id}|{pid}]    rss: {mem:.2f} MB  (virtual: {virt:.2f} MB, swap: {swap:.2f} MB)')
+
 #### Array Helper Functions
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+def float32_to_uint8(array):
+    array = (255 * array).astype(np.uint8)
+    return array
+
+@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)    
+def uint8_to_float32(array):
+    array = array.astype(np.float32) / float32(255)
+    return array
+
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 #@profile
@@ -104,24 +125,20 @@ def geometric_mean(image):
         return image
 
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
-# #@profile
-# def autoscale_array(array):
-
-#     array_ = array.flatten()
-#     lo = array_.min()
-#     hi = array_.max()
-
-#     normalized = array - lo
-#     return normalized / hi
-
 #@profile
-def autoscale_array(array_):
+def autoscale_array(array):
 
-    array = array_.astype(np.float32)
+    array = array.astype(np.float32)
     lo = array.flatten().min()
-    array = array - lo    
+    array -= lo    
     hi = array.flatten().max()
-    array = array / hi
+    try:
+        assert hi > 0, f'autoscale_array cannot map null array to interval [0,1]'
+    except AssertionError as msg:
+        print(msg)
+        return array
+
+    array /= hi
  
     return array
 
@@ -137,7 +154,7 @@ def autoscale_arrays(A, B):
     B = B / hi
     return A, B
 
-@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
+#@st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 #@profile
 def imresize(image, scale=-1, size=(-1,-1)):
     ''' image: numpy array with shape (n, m) or (n, m, 3)
@@ -266,7 +283,6 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
     
    """
     N = A.shape[0]
-    #b = B.flatten(order='F')
     if method == 'cg':
         if CG_prec == 'ILU':
             # Find ILU preconditioner (constant in time)
@@ -289,22 +305,19 @@ def solver_sparse(A, B, method='direct', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015
 def solve_linear_equation(G, A, method='cg', CG_prec='ILU', CG_TOL=0.1, LU_TOL=0.015, MAX_ITER=50, FILL=50):
 
     r, c = G.shape
-    #G_ = flatten_by_cols(G)
-    return solver_sparse(A,G.flatten(order='F'), method, CG_prec, CG_TOL, LU_TOL, MAX_ITER, FILL).reshape(c,r).T
-    
-    #return g.reshape(c,r).T
+    return solver_sparse(A,G.flatten(order='F'), method, CG_prec, CG_TOL, LU_TOL, MAX_ITER, FILL).astype(np.float32).reshape(c,r).T
 
     
 #### Exposure Functions
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 #@profile
 def applyK(G, k, a=-0.3293, b=1.1258, verbose=False):
-
+    log_memory('applyK||B')
     if k==1.0:
-        return G
+        return G.astype(np.float32)
 
     if k<=0:
-        return np.ones_like(G)
+        return np.ones_like(G, dtype=np.float32)
 
     gamma = k**a
     beta = np.exp((1-gamma)*b)
@@ -322,13 +335,11 @@ def entropy(array, bins=255, lo=0, hi=255):
     if array.dtype.name[:5] == 'float':
         array = (array * 255).astype(np.uint8)
     
-    counts = np.histogram(array,bins=bins, range=(lo,hi))[0]#.astype(np.uint16)
+    counts = np.histogram(array,bins=bins, range=(lo,hi))[0]
     counts = counts[counts>0]
     N = counts.sum()
     return (np.log2(N) - (np.dot(counts, np.log2(counts)) / N)).astype(np.float32)
-    #frequencies = counts / counts.sum() + 1e-12
-    #return (-1* np.dot(frequencies, np.log2(frequencies)))
-
+    
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 #@profile
 def xentropy(p, q, bins=255, lo=0, hi=255):
@@ -383,6 +394,8 @@ def bit_concat(p, q):
 def joint_entropy(p,q, bins=256*256, lo=0, hi=256*256):
     pq = bit_concat(p,q)
     pq_counts = np.histogram(pq, bins=bins, range=(lo,hi))[0]
+    del pq
+    gc.collect()
     pq_counts = pq_counts[pq_counts>0]
     N = pq_counts.sum()
     return (np.log2(N) - (np.dot(pq_counts, np.log2(pq_counts)) / N)).astype(np.float32)
@@ -432,7 +445,9 @@ def optimize_exposure_ratio(array, a, b, lo=1, hi=7, npoints=20):
     entropies = np.array(list(map(lambda k: entropy(applyK(array, k, a, b)), sample_ratios)))
     optimal_index = np.argmax(entropies)
     return sample_ratios[optimal_index]
-      
+
+
+
 @st.cache(max_entries=MAX_ENTRIES, show_spinner=False)
 #@profile
 def bimef(image, exposure_ratio=-1, enhance=0.5, 
@@ -443,65 +458,97 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
           lo=1, hi=7, npoints=20,
           verbose=False, print_info=True):
 
-    pid = os.getpid()
-    mem = Process(pid).memory_info()[0]/float(2**20)
-
-    print(f'[{datetime.now().isoformat()}]  [bimef|{pid}]    {mem:.2f}')
+    log_memory('bimef||B')
     
     tic = datetime.now()
 
-    mem_check = np.copy(image)
-
+    log_memory('bimef|image_maxRGB|B')
     if image.ndim == 3: 
-        image = image[:,:,:3]
+        image = np.copy(image[:,:,:3])
         image_maxRGB = image.max(axis=2)
-    else: image_maxRGB = image
-        
+    else: image_maxRGB = np.copy(image)
+    log_memory('bimef|image_maxRGB|E')
+
+    log_memory('bimef|scale|B')
     if (scale <= 0) | (scale >= 1) : image_maxRGB_reduced = image_maxRGB
     else: image_maxRGB_reduced = imresize(image_maxRGB, scale)
-        
+    log_memory('bimef|scale|E')
+
+    log_memory('bimef|autoscale_array|B')
     image_maxRGB_reduced_01 = autoscale_array(image_maxRGB_reduced)
+    log_memory('bimef|autoscale_array|E')
     
     ############ TEXTURE MAP  ###########################
+    log_memory('bimef|delta|B')
     dt0_v, dt0_h = delta(image_maxRGB_reduced_01)
+    log_memory('bimef|delta|E')
+    log_memory('bimef|kernel|B')
     kernel_v, kernel_h = kernel(dt0_v, dt0_h, sigma)
+    log_memory('bimef|kernel|E')
+    log_memory('bimef|textures|B')
     wx, wy = textures(dt0_v, dt0_h, kernel_v, kernel_h, sharpness)
+    log_memory('bimef|textures|E')
     ######################################################
 
     ############ ILLUMINATION MAP  ###########################
+    log_memory('bimef|construct_map|B')
     illumination_map = construct_map(wx, wy, lamda) 
+    log_memory('bimef|construct_map|E')
     ######################################################
 
     ############ SOLVE LINEAR EQUATION:  ###########################
+    log_memory('bimef|solve_linear_equation|B')
     image_maxRGB_reduced_01_smooth = solve_linear_equation(image_maxRGB_reduced_01, illumination_map, method=solver, CG_prec=CG_prec, CG_TOL=CG_TOL, LU_TOL=LU_TOL, MAX_ITER=MAX_ITER, FILL=FILL)
+    log_memory('bimef|solve_linear_equation|E')
     ######################################################
 
     ############ RESTORE REDUCED SIZE SMOOTH MATRIX TO FULL SIZE:  ###########################
+    log_memory('bimef|imresize|B')
     image_maxRGB_01_smooth = imresize(image_maxRGB_reduced_01_smooth, size=image_maxRGB.shape)
+    log_memory('bimef|imresize|E')
     ######################################################
     
     ############# CALCULATE WEIGHTS ###############################
+    log_memory('bimef|weights|B')
     weights = np.power(image_maxRGB_01_smooth, enhance)  
     weights = np.expand_dims(weights, axis=2)
     weights  = np.where(weights>1,1,weights)
+    log_memory('bimef|weights|E')
     ######################################################
     
+    log_memory('bimef|autoscale_array|B')
     image_01 = autoscale_array(image)
+    log_memory('bimef|autoscale_array|E')
+    log_memory('bimef|np.zeros_like|B')
     dim_pixels = np.zeros_like(image_maxRGB_01_smooth)
+    log_memory('bimef|np.zeros_like|E')
     
     if exposure_ratio==-1:
+        log_memory('bimef|dim_threshold|B')
         dim_pixels = image_maxRGB_01_smooth<dim_threshold
+        log_memory('bimef|dim_threshold|E')
+        log_memory('bimef|get_dim_pixels|B')
         Y = get_dim_pixels(image_01, dim_pixels, dim_size=dim_size) 
+        log_memory('bimef|get_dim_pixels|E')
+        log_memory('bimef|optimize_exposure_ratio|B')
         exposure_ratio = optimize_exposure_ratio(Y, a, b, lo=lo, hi=hi, npoints=npoints)
+        log_memory('bimef|optimize_exposure_ratio|E')
     
-    image_exposure_adjusted = applyK(image_01, exposure_ratio, a, b, verbose=verbose) 
-    image_exposure_adjusted = np.where(image_exposure_adjusted>1,1,image_exposure_adjusted)    
-    
+    log_memory('bimef|applyK|B')
+    image = applyK(image_01, exposure_ratio, a, b, verbose=verbose) 
+    log_memory('bimef|applyK|E')
+    log_memory('bimef|np.where|B')
+    image = np.where(image>1,1,image)    
+    log_memory('bimef|np.where|E')
     ############ Final Result:  ###########################
     #enhanced_image =  image_01 * weights + image_exposure_adjusted * (1 - weights)   
-    image_exposure_adjusted = image_exposure_adjusted * (1 - weights)
-    image_exposure_adjusted = image_exposure_adjusted + image_01 * weights
-    image_exposure_adjusted = (255 * image_exposure_adjusted).astype(np.uint8)
+    log_memory('bimef|result|B')
+    image = image * (1 - weights)
+    log_memory('bimef|result|1')
+    image = image + image_01 * weights
+    log_memory('bimef|result|2')
+    image = (255 * image).astype(np.uint8)
+    log_memory('bimef|result|E')
     ##################################################
     
     toc = datetime.now()
@@ -509,9 +556,10 @@ def bimef(image, exposure_ratio=-1, enhance=0.5,
     if print_info:
         print(f'[{datetime.now().isoformat()}] exposure_ratio: {exposure_ratio:.4f}, enhance: {enhance:.4f}, lamda: {lamda:.4f}, scale: {scale:.4f}, runtime: {(toc-tic).total_seconds():.4f}s')
 
-    pid = os.getpid()
-    mem = Process(pid).memory_info()[0]/float(2**20)
+    log_memory('bimef||E')
+    
+    log_memory('bimef|gc.collect|B')
+    gc.collect()
+    log_memory('bimef|gc.collect|E')
 
-    print(f'[{datetime.now().isoformat()}]  [bimef|{pid}]    {mem:.2f}')
-
-    return image_exposure_adjusted
+    return image

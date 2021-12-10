@@ -1,4 +1,4 @@
-from bimef import bimef, entropy, xentropy, KL, autoscale_array, array_info
+from bimef import bimef, entropy, xentropy, KL, autoscale_array, array_info, log_memory
 from bimef import joint_entropy, mutual_information, variation_of_information, normalized_variation_of_information, conditional_entropy
 import cv2
 import numpy as np
@@ -11,13 +11,11 @@ import os
 
 st.set_page_config(page_title="Luminon", layout="wide")
 
-def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3, 
+def run_app(default_granularity=0.1, default_speed=10, default_power=0.8, default_smoothness=0.3, 
             default_dim_size=(50), default_dim_threshold=0.5, default_a=-0.3293, default_b=1.258, default_exposure_ratio=-1):
 
-    pid = os.getpid()
-    mem = Process(pid).memory_info()[0]/float(2**20)
+    log_memory('run_app||B')
 
-    print(f'[{datetime.now().isoformat()}]  [run_app|{pid}]    {mem:.2f}')
     @st.cache(max_entries=1, show_spinner=False)
     def adjust_intensity(
                          array, 
@@ -40,13 +38,24 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
                          lo=lo, hi=hi, npoints=npoints
                          ) 
 
-    fImage = st.sidebar.file_uploader("Upload image file:")
 
-    granularity = float(st.sidebar.text_input('Resolution   (default = 0.1)', str(default_granularity)))
+    st.sidebar.markdown("##### A faster instance of this app is running on Streamlit Cloud #####")
+    href = f'<a href="https://share.streamlit.io/mlfisch3/neuro-hdr/main/app.py">Streamlit Cloud instance</a>'
+    st.sidebar.markdown(href, unsafe_allow_html=True)
+
+    log_memory('run_app|file_uploader|B')
+    fImage = st.sidebar.file_uploader("Upload image file:")
+    log_memory('run_app|file_uploader|E')
+
+    speed = float(st.sidebar.text_input('Speed   (default = 10)', str(default_speed)))
+    if (speed < 1) or (speed > 10):
+        granularity = default_granularity
+    else:
+        granularity = 1.0 / speed
     power = float(st.sidebar.text_input('Power     (default = 0.8)', str(default_power)))
     smoothness = float(st.sidebar.text_input('Smoothness   (default = 0.3)', str(default_smoothness)))
-    exposure_sample = int(st.sidebar.text_input('Sample   (default = 50)', str(default_dim_size)))
-    sensitivity = float(st.sidebar.text_input('Sensitivity   (default = 0.5)', str(default_dim_threshold)))
+    #exposure_sample = int(st.sidebar.text_input('Sample   (default = 50)', str(default_dim_size)))
+    #sensitivity = float(st.sidebar.text_input('Sensitivity   (default = 0.5)', str(default_dim_threshold)))
     a = float(st.sidebar.text_input('Camera A   (default = -0.3293)', str(default_a)))
     b = float(st.sidebar.text_input('Camera B   (default = 1.1258)', str(default_b)))
     exposure_ratio = float(st.sidebar.text_input('Exposure Ratio   (default = -1 (auto))', str(default_exposure_ratio)))
@@ -58,22 +67,33 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
         input_file_name = str(fImage.__dict__['name'])
         input_file_ext = '.' + str(input_file_name.split('.')[-1])
         input_file_basename = input_file_name.replace(input_file_ext, '')
-        np_array = np.frombuffer(fImage.getvalue(), np.uint8) 
+        log_memory('run_app|np.frombuffer|B')
+        np_array = np.frombuffer(fImage.getvalue(), np.uint8)
+        log_memory('run_app|np.frombuffer|E')
+        log_memory('run_app|cv2.imdecode|B')
         image_np = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+        log_memory('run_app|cv2.imdecode|E')
 
         with col1:        
+
             st.header(f'Original Image')
+            log_memory('run_app|st.image|B')
             st.image(image_np[:,:,[2,1,0]])
+            log_memory('run_app|st.image|E')
 
             input_file_name = st.text_input('Download Original Image As', input_file_name)
             ext = '.' + input_file_name.split('.')[-1]
+            log_memory('run_app|cv2.imencode|B')
             image_np_binary = cv2.imencode(ext, image_np)[1].tobytes()
+            log_memory('run_app|cv2.imencode|E')
 
             button = st.download_button(label = "Download Original Image", data = image_np_binary, file_name = input_file_name, mime = "image/png")
 
         start = datetime.now()
-        image_np_ai = adjust_intensity(image_np, exposure_ratio=exposure_ratio, scale=granularity, enhance=power, 
-                                       lamda=smoothness, dim_size=(exposure_sample,exposure_sample), dim_threshold=sensitivity, a=a, b=b)
+        log_memory('run_app|adjust_intensity|B')
+        image_np_ai = adjust_intensity(image_np, exposure_ratio=exposure_ratio, scale=granularity, enhance=power, lamda=smoothness, a=a, b=b)
+        log_memory('run_app|adjust_intensity|E')
+
         end = datetime.now()
         process_time = (end - start).total_seconds()
         print(f'[{datetime.now().isoformat()}]  Processing time: {process_time:.5f} s')
@@ -81,65 +101,75 @@ def run_app(default_granularity=0.1, default_power=0.8, default_smoothness=0.3,
         processed_file_name = input_file_basename + '_AI' + input_file_ext
         with col2:        
             st.header(f'Enhanced Image')
+            log_memory('run_app|st.image|B')            
             st.image(image_np_ai, clamp=True)
-        
+            log_memory('run_app|st.image|E')
+
             output_file_name = st.text_input('Download Enhanced Image As', processed_file_name)
             ext = '.' + output_file_name.split('.')[-1]
+            log_memory('run_app|cv2.imencode|B')
             image_np_ai_binary = cv2.imencode(ext, image_np_ai[:,:,[2,1,0]])[1].tobytes()
+            log_memory('run_app|cv2.imencode|E')
 
             button = st.download_button(label = "Download Enhanced Image", data = image_np_ai_binary, file_name = output_file_name, mime = "image/png")
 
         st.text('\n\n\n\n\n\n\n\n')
         st.text('*Supported file extensions: jpg, jpeg, png, gif, bmp, pdf, svg, eps')
             
-        pid = os.getpid()
-        mem = Process(pid).memory_info()[0]/float(2**20)
+        log_memory('run_app|array_info|B')
+        image_np_info, image_np_info_str = array_info(image_np, print_info=False, return_info=True, return_info_str=True)
+        log_memory('run_app|array_info|E')
+        log_memory('run_app|array_info|B')
+        image_np_ai_info, image_np_ai_info_str = array_info(image_np_ai, print_info=False, return_info=True, return_info_str=True)
+        log_memory('run_app|array_info|E')
 
-        print(f'[{datetime.now().isoformat()}]  [run_app|{pid}]    {mem:.2f}')
-        #image_np_info, image_np_info_str = array_info(image_np, print_info=False, return_info=True, return_info_str=True)
-
-        #r = process_time / image_np.size
-        #print(f'{r*1000000:.5f} microseconds / pixel')
-
-#        image_np_ai_info, image_np_ai_info_str = array_info(image_np_ai, print_info=False, return_info=True, return_info_str=True)
-
-        # relative_entropy = xentropy(image_np, image_np_ai)
-        # kl_divergence = KL(image_np, image_np_ai)
+        log_memory('run_app|xentropy|B')
+        relative_entropy = xentropy(image_np, image_np_ai)
+        log_memory('run_app|xentropy|E')
+        log_memory('run_app|kl_divergence|B')
+        kl_divergence = KL(image_np, image_np_ai)
+        log_memory('run_app|kl_divergence|E')
+        # log_memory('run_app|joint_entropy|B')
         # s_joint = joint_entropy(image_np, image_np_ai)
+        # log_memory('run_app|joint_entropy|E')
+        # log_memory('run_app|mutual_information|B')
         # i_mutual = mutual_information(image_np, image_np_ai)
+        # log_memory('run_app|mutual_information|E')
+        # log_memory('run_app|variation_of_information|B')
         # voi = variation_of_information(image_np, image_np_ai)
+        # log_memory('run_app|variation_of_information|E')
+        # log_memory('run_app|normalized_variation_of_information|B')
         # nvoi = normalized_variation_of_information(image_np, image_np_ai)
+        # log_memory('run_app|normalized_variation_of_information|E')
 
-        # entropy_change_abs = image_np_ai_info['entropy'] - image_np_info['entropy']
-        # entropy_change_rel = (image_np_ai_info['entropy'] / image_np_info['entropy']) - 1.0
+        entropy_change_abs = image_np_ai_info['entropy'] - image_np_info['entropy']
+        entropy_change_rel = (image_np_ai_info['entropy'] / image_np_info['entropy']) - 1.0
 
-        # st.sidebar.text(f'entropy change: {entropy_change_abs:.4f} ({entropy_change_rel * 100.0:.4f} %)\n')        
-        # st.sidebar.text(f'relative entropy: {relative_entropy:.4f}')
-        # st.sidebar.text(f'KL divergence: {kl_divergence:.4f}')
+        log_memory('run_app|show statistics|B')
+        st.sidebar.text(f'entropy change: {entropy_change_abs:.4f} ({entropy_change_rel * 100.0:.4f} %)\n')        
+        st.sidebar.text(f'relative entropy: {relative_entropy:.4f}')
+        st.sidebar.text(f'KL divergence: {kl_divergence:.4f}')
         # st.sidebar.text(f'joint entropy: {s_joint:.4f}')
         # st.sidebar.text(f'mutual information: {i_mutual:.4f}')
         # st.sidebar.text(f'variation of information (VOI): {voi:.4f}')
         # st.sidebar.text(f'normalized VOI: {nvoi:.4f}\n')
         
-        # st.sidebar.text("Pixel Statistics [Original Image]:")
+        st.sidebar.text("Pixel Statistics [Original Image]:")
         
-        # st.sidebar.text(image_np_info_str)
+        st.sidebar.text(image_np_info_str)
         
-        # st.sidebar.text("\n\n\n\n\n")
+        st.sidebar.text("\n\n\n\n\n")
         
-        # st.sidebar.text("Pixel Statistics [Enhanced Image]:")
+        st.sidebar.text("Pixel Statistics [Enhanced Image]:")
 
-        # st.sidebar.text(image_np_ai_info_str)
-
+        st.sidebar.text(image_np_ai_info_str)
+        log_memory('run_app|show_statistics|E')
+        log_memory('run_app||E')
 
 if __name__ == '__main__':
     
-    pid = os.getpid()
-
-    mem = Process(pid).memory_info()[0]/float(2**20)
-    print(f'[{datetime.now().isoformat()}]  [main|{pid}]    {mem:.2f}')
+    log_memory('main|run_app|B')
 
     run_app()
 
-    mem = Process(pid).memory_info()[0]/float(2**20)
-    print(f'[{datetime.now().isoformat()}]  [main|{pid}]    {mem:.2f}')
+    log_memory('main|run_app|E')
