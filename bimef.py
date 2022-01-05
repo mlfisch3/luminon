@@ -605,10 +605,17 @@ def adjust_exposure(image, image_maxRGB_01_smooth, a, b, exposure_ratio=-1, dim_
     return image_adjusted, exposure_ratio
 
 
+# def fuse_image(image_01, image_adjusted, weights):
+
+#     image_enhanced = image_adjusted * (1 - weights)
+#     image_enhanced += image_01 * weights
+
+#     return image_enhanced
+
 def fuse_image(image_01, image_adjusted, weights):
 
-    image_enhanced = image_adjusted * (1 - weights)
-    image_enhanced += image_01 * weights
+    illumination = float32_to_uint8(image_adjusted * (1 - weights))
+    image_enhanced = illumination + float32_to_uint8(image_01 * weights)
 
     return image_enhanced
 
